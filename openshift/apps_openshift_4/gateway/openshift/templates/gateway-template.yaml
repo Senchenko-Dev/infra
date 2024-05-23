@@ -1,0 +1,177 @@
+kind: Template
+apiVersion: v1
+metadata:
+  name: %APP_REPO_NAME%-template
+objects:
+
+- kind: DeploymentConfig
+  apiVersion: v1
+  metadata:
+    labels:
+      app: %APP_REPO_NAME%
+      env: %ENVIRONMENT%
+      project: %GROUP_ID%
+    name: %APP_REPO_NAME%
+    namespace: pro-%ENVIRONMENT%-%GROUP_ID%
+  spec:
+    replicas: %PODS_COUNT%
+    strategy:
+      type: Rolling
+      rollingParams:
+        timeoutSeconds: %DEPLOYMENT_TIMEOUT_SEC%
+    selector:
+      app: %APP_REPO_NAME%
+    template:
+      metadata:
+        labels:
+          app: %APP_REPO_NAME%
+          deploymentconfig: %APP_REPO_NAME%
+      spec:
+        volumes:
+          - name: logback
+            configMap:
+              name: logback-spring
+              defaultMode: 420
+          - name: heap-dump
+            persistentVolumeClaim:
+              claimName: heap-dump
+          - name: jks
+            secret:
+              secretName: keystore
+        containers:
+          - env:
+              - name: TZ
+                value: Europe/Moscow 
+              - name: APP_NAME
+                value: %APP_REPO_NAME%
+              - name: NODE_IP
+                valueFrom:
+                  fieldRef:
+                    apiVersion: v1
+                    fieldPath: status.hostIP
+              - name: JAVA_TOOL_OPTIONS
+                valueFrom:
+                  secretKeyRef:
+                    name: global-java-options
+                    key: global-params
+              - name: _JAVA_OPTIONS
+                valueFrom:
+                  secretKeyRef:
+                    name: java-options
+                    key: kstore-params
+              - name: JAVA_KEYSTORE_GEN
+                valueFrom:
+                  secretKeyRef:
+                    name: java-keystore-gen
+                    key: keytool-pass
+              - name: SSL_EXTRACTOR
+                valueFrom:
+                  secretKeyRef:
+                    key: get_certificates.sh
+                    name: ssl-extractor
+              - name: INTEGRATION_SYSTEMS_TEST
+                value: protest-graylog.trosbank.trus.tsocgen:9000 rsbt-astdss02.trosbank.trus.tsocgen:443
+              - name: INTEGRATION_SYSTEMS_CERT
+                value: rsb-ascmosdss01.rosbank.rus.socgen:443
+              - name: INTEGRATION_SYSTEMS_PROD
+                value: pro-graylog.rsb.dmz.rus.socgen:9000      
+            envFrom:
+            - configMapRef:
+                name: %ENVIRONMENT%-pro-proportal-map
+            image: %DOCKER_REGISTRY_URL%/%APP_REPO_NAME%%IMAGE_DIR%:%TAG%
+            imagePullPolicy: Always
+            readinessProbe:
+              httpGet:
+                path: /actuator/health
+                port: 8080
+                scheme: HTTP
+              initialDelaySeconds: 1
+              periodSeconds: 5
+            command: ['sh','-c']
+            args:
+              - >-
+                 cp /tmp/kstore.p12 /home/%APP_REPO_NAME%/kstore.p12;
+                 echo ${SSL_EXTRACTOR} >> sslExtractor.sh;
+                 env=`echo %ENVIRONMENT% | tr [:lower:] [:upper:]`;
+                 sed -i "s|%ENV%|${env}|g" sslExtractor.sh;
+                 sh ./sslExtractor.sh;
+                 rm -f sslExtractor.sh;
+                 java -Dlogging.config="/home/%APP_REPO_NAME%/logback-spring.xml" -jar %APP_REPO_NAME%.jar
+            readOnlyRootFilesystem: false
+            securityContext:
+              allowPrivilegeEscalation: false
+            importPolicy: 
+              insecure: "true"
+            name: %APP_REPO_NAME%
+            ports:
+              - containerPort: 8080
+                protocol: TCP
+            resources:
+              limits:
+                memory: "300Mi"
+              requests:
+                cpu: "0.05"
+                memory: "300Mi"
+            dnsConfig:
+              options:
+                - name: ndots
+                  value: '1'
+            volumeMounts:
+              - name: logback
+                mountPath: /home/%APP_REPO_NAME%/logback-spring.xml
+                subPath: logback-spring.xml   
+              - name: heap-dump
+                mountPath: /home/%APP_REPO_NAME%/heap-dump
+              - name: jks
+                mountPath: /tmp/kstore.p12
+                subPath: kstore.p12
+
+
+
+- kind: Service
+  apiVersion: v1
+  metadata:
+    labels:
+      app: %APP_REPO_NAME%
+      env: %ENVIRONMENT%
+      project: %GROUP_ID%
+    name: %APP_REPO_NAME%
+    namespace: pro-%ENVIRONMENT%-%GROUP_ID%
+  spec:
+    ports:
+      - name: 8080-tcp
+        port: 8080
+        protocol: TCP
+        targetPort: 8080
+    selector:
+      app: %APP_REPO_NAME%
+      deploymentconfig: %APP_REPO_NAME%
+    sessionAffinity: None
+    type: LoadBalancer
+  status:
+    loadBalancer: {}
+
+- kind: Route
+  apiVersion: v1
+  metadata:
+    annotations:
+      haproxy.router.openshift.io/timeout: 60s
+
+    labels:
+      app: %APP_REPO_NAME%
+      env: %ENVIRONMENT%
+      project: %GROUP_ID%
+    name: %APP_REPO_NAME%
+    namespace: pro-%ENVIRONMENT%-%GROUP_ID%
+  spec:
+    host: %APP_REPO_NAME%-proportal.apps.%SUB_DOMAIN%.%DOMAIN%
+    port:
+      targetPort: 8080-tcp
+    tls:
+      termination: edge
+    to:
+      kind: Service
+      name: %APP_REPO_NAME%
+      weight: 100
+    wildcardPolicy: None
+
