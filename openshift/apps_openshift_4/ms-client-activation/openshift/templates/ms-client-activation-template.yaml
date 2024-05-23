@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: %ENVIRONMENT%-pro-proportal
+  name: %APP_REPO_NAME%
+  labels:
+    app: %APP_REPO_NAME%
+    env: %ENVIRONMENT%
+    project: %GROUP_ID%
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+    rollingParams:
+      timeoutSeconds: 600
+  selector:
+    matchLabels:
+      app: %APP_REPO_NAME%
+  template:
+    metadata:
+      labels:
+        app: %APP_REPO_NAME%
+        deployment: %APP_REPO_NAME%
+    spec:
+      volumes:
+          - name: krb
+            configMap:
+              name: kafka
+              defaultMode: 420
+          - name: key
+            secret:
+              secretName: kafka
+              defaultMode: 420
+          - name: kafka-ssl
+            secret:
+              secretName: kafka-ssl.key
+              defaultMode: 420
+          - name: root-ssl
+            secret:
+              secretName: root-ssl
+              defaultMode: 420    
+          - name: jaas
+            configMap:
+              name: kafka
+              defaultMode: 420  
+      containers:
+        - env:
+            - name: TZ
+              value: Europe/Moscow 
+            - name: APP_NAME
+              value: %APP_REPO_NAME%
+            - name: KRB5_CONFIG
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka
+                  key: kafka-env  
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.hostIP   
+            - name: SSL_EXTRACTOR
+              valueFrom:
+                secretKeyRef:
+                  key: get_certificates.sh
+                  name: ssl-extractor
+            - name: INTEGRATION_SYSTEMS_TEST
+              value: RBQATAS00049.test.rus.socgen:9092 RBQATAS00050.test.rus.socgen:9092 RBQATAS00051.test.rus.socgen:9092
+            - name: INTEGRATION_SYSTEMS_CERT
+              value: RBQACAS00033.gts.rus.socgen:9092 RBQACAS00034.gts.rus.socgen:9092 RBQACAS00035.gts.rus.socgen:9092
+            - name: INTEGRATION_SYSTEMS_PROD
+              value: RBQAPAS00061.gts.rus.socgen:9092 RBQAPAS00062.gts.rus.socgen:9092 RBQAPAS00063.gts.rus.socgen:9092 RBQAPAS00064.gts.rus.socgen:9092 RBQAPAS00065.gts.rus.socgen:9092          
+          image: %DOCKER_REGISTRY_URL%/%APP_REPO_NAME%%IMAGE_DIR%:%TAG%
+          args:
+            - >-
+              php docker/scripts/config.php --template=%APP_REPO_NAME% --env=%ENVIRONMENT%;
+              echo ${SSL_EXTRACTOR}  >> /tmp/sslExtractor.sh; 
+              env=`echo test | tr [:lower:] [:upper:]`;
+              sed -i  "s|%ENV%|${env}|g" /tmp/sslExtractor.sh; sh /tmp/sslExtractor.sh;
+              /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
+          imagePullPolicy: Always
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+              scheme: HTTP
+            initialDelaySeconds: 1
+            periodSeconds: 5
+          readOnlyRootFilesystem: false
+          securityContext:
+            allowPrivilegeEscalation: false
+          importPolicy:
+            insecure: "true"  
+          name: %APP_REPO_NAME%
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          resources:
+            limits:
+              memory: "300Mi"
+            requests:
+              cpu: "1m"
+              memory: "300Mi"
+          dnsConfig:
+            options:
+              - name: ndots
+                value: '1'
+          volumeMounts:
+              - name: key
+                mountPath: /tmp/trbsproportalkafka.keytab
+                subPath: trbsproportalkafka.keytab
+              - name: jaas
+                mountPath: /tmp/kafka_client_jaas.conf
+                subPath: kafka_client_jaas.conf 
+              - name: krb
+                mountPath: /tmp/krb5.conf
+                subPath: krb5.conf 
+              - name: kafka-ssl
+                mountPath: /tmp/kafka-ssl.key
+                subPath: kafka-ssl.key
+              - name: root-ssl
+                mountPath: /tmp/RSB-SSPMOSCERTR.cer
+                subPath: RSB-SSPMOSCERTR.cer
+              - name: root-ssl
+                mountPath: /tmp/SGUniPassRootCA2016.cer
+                subPath: SGUniPassRootCA2016.cer    
+          terminationMessagePolicy: File
+          envFrom:
+            - configMapRef:
+                name: %ENVIRONMENT%-pro-proportal-map
