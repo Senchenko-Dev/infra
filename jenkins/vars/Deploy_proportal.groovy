@@ -358,12 +358,6 @@ def vue(buildNumberFrontVue, branchName) {
             sh "curl -u $USERNAME:$PASSWORD -O ${NEXUS_REPOSITORY_PROPORTAL_VUE_URL}/${artifact}"
             sh "tar -xzf ${artifact} -C ${WORKSPACE}"
             sh "rm -rf ${artifact}"
-    } else if (buildNumberFrontVue && branchName == 'master') { //для того чтобы фронт мог запускать при указании веток BRANCH_FRONT == master и BRANCH_BACK == master в job'е proportal-vue
-            def artifact = sh(script: 'curl -u $USERNAME:$PASSWORD -X GET "https://nexus.gts.rus.socgen/service/rest/v1/search/assets?repository=proportal-raw&name=proportal-vue/proportal-vue-master---*.tar.gz" | jq -r ".items[].path" | grep -o "proportal-vue-master---[0-9]*.tar.gz" | sort | tail -1', returnStdout: true).trim()
-            echo "DOWNLOADING LATEST VUE BUILD NUMBER: ${artifact}"
-            sh "curl -u $USERNAME:$PASSWORD -O ${NEXUS_REPOSITORY_PROPORTAL_VUE_URL}/${artifact}"
-            sh "tar -xzf ${artifact} -C ${WORKSPACE}"
-            sh "rm -rf ${artifact}"
     } else if (buildNumberFrontVue && branchName) {  
             def artifactExists = sh(script: "curl -s -I -u $USERNAME:$PASSWORD -X GET \"${NEXUS_REPOSITORY_PROPORTAL_VUE_URL}/proportal-vue-feature---${buildNumberFrontVue}.tar.gz\" | head -n 1 | grep \"200 OK\"", returnStatus: true) == 0
             if (artifactExists) {  
