@@ -414,3 +414,16 @@ def deployToProd(String HOST){
         }
     }
 }
+
+
+                            // def folderCheckOnHost = ['193.48.9.80', '193.48.8.163', '193.48.9.143', '193.48.9.219']
+                            // def buildName = "${params.BUILD}"
+                            
+                            // withCredentials([usernamePassword(credentialsId: 'Pro-portal-prod', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                            //     for (host in folderCheckOnHost) {
+                            //         def command = sh(script: "sshpass -p '${PASS}' ssh -o StrictHostKeyChecking=no ${USER}@rosbank.rus.socgen@${host} test -d /var/www/proportal/builds/proportal---${buildName} && echo 'exists' || echo 'not exists'", returnStdout: true).trim()
+                            //         if (command == 'exists') {
+                            //             error("ТАКОЙ БИЛД УЖЕ СУЩЕСТВУЕТ НА СЕРВЕРЕ")
+                            //         }
+                            //     }
+                            // }
