@@ -1,0 +1,189 @@
+kind: Template
+apiVersion: v1
+metadata:
+  name: %APP_REPO_NAME%-template
+objects:
+
+
+- kind: DeploymentConfig
+  apiVersion: v1
+  metadata:
+    labels:
+      app: %APP_REPO_NAME%
+      env: %ENVIRONMENT%
+      project: %GROUP_ID%
+    name: %APP_REPO_NAME%
+    namespace: %ENVIRONMENT%-pro-%GROUP_ID%
+  spec:
+    replicas: %PODS_COUNT%
+    strategy:
+      type: Rolling
+      rollingParams:
+        timeoutSeconds: %DEPLOYMENT_TIMEOUT_SEC%
+    selector:
+      app: %APP_REPO_NAME%
+    template:
+      metadata:
+        labels:
+          app: %APP_REPO_NAME%
+          deploymentconfig: %APP_REPO_NAME%
+      spec:
+        volumes:
+          - name: logback
+            configMap:
+              name: logback-spring
+              defaultMode: 420
+          - name: heap-dump
+            persistentVolumeClaim:
+              claimName: heap-dump
+        containers:
+          - env:
+              - name: NODE_IP
+                valueFrom:
+                  fieldRef:
+                    fieldPath: status.hostIP
+              - name: POD_IP
+                valueFrom:
+                  fieldRef:
+                    fieldPath: status.podIP
+              - name: TZ
+                value: Europe/Moscow 
+              - name: APP_NAME
+                value: %APP_REPO_NAME%
+              - name: BITBUCKET_P
+                valueFrom:
+                  secretKeyRef:
+                    key: password
+                    name: bitbucket-auth
+              - name: BITBUCKET_U
+                valueFrom:
+                  secretKeyRef:
+                    key: username
+                    name: bitbucket-auth
+              - name: POSTGRESQL_U
+                valueFrom:
+                  secretKeyRef:
+                    key: POSTGRESQL_U
+                    name: config-server-parameters
+              - name: POSTGRESQL_P
+                valueFrom:
+                  secretKeyRef:
+                    key: POSTGRESQL_P
+                    name: config-server-parameters
+              - name: GIT_URI
+                valueFrom:
+                  secretKeyRef:
+                    key: GIT_URI
+                    name: config-server-parameters
+              - name: POSTGRESQL_ENV
+                valueFrom:
+                  secretKeyRef:
+                    key: POSTGRESQL_ENV
+                    name: config-server-parameters
+              - name: DATABASE_NAME
+                valueFrom:
+                  secretKeyRef:
+                    key: DATABASE_NAME
+                    name: config-server-parameters
+              - name: KEYDB_PASS
+                valueFrom:
+                  secretKeyRef:
+                    key: KEYDB_PASS 
+                    name: config-server-parameters     
+              - name: KEYDB_HOST
+                valueFrom:
+                  secretKeyRef:
+                    key: KEYDB_HOST
+                    name: config-server-parameters
+              - name: ENCRYPT_KEY
+                valueFrom:
+                  secretKeyRef:
+                    key: password
+                    name: config-server-encrypt
+            envFrom:
+              - configMapRef:
+                  name: %ENVIRONMENT%-pro-proportal-map
+            image: %DOCKER_REGISTRY_URL%/%APP_REPO_NAME%%IMAGE_DIR%:%TAG%
+            imagePullPolicy: Always
+            readinessProbe:
+              httpGet:
+                path: /actuator/health
+                port: 8080
+                scheme: HTTP
+              initialDelaySeconds: 1
+              periodSeconds: 5
+            command: ['sh','-c']
+            args: ['java -Dlogging.config="/home/%APP_REPO_NAME%/logback-spring.xml" -jar %APP_REPO_NAME%.jar']
+            readOnlyRootFilesystem: false
+            securityContext:
+              allowPrivilegeEscalation: false
+            importPolicy: 
+              insecure: "true"
+            name: %APP_REPO_NAME%
+            ports:
+              - containerPort: 8080
+                protocol: TCP
+            resources:
+              limits:
+                memory: "600Mi"
+              requests:
+                cpu: "0.005"
+                memory: "600Mi"
+            dnsConfig:
+              options:
+                - name: ndots
+                  value: '1'
+            volumeMounts:
+              - name: logback
+                mountPath: /home/%APP_REPO_NAME%/logback-spring.xml
+                subPath: logback-spring.xml   
+              - name: heap-dump
+                mountPath: /home/%APP_REPO_NAME%/heap-dump
+
+- kind: Service
+  apiVersion: v1
+  metadata:
+    labels:
+      app: %APP_REPO_NAME%
+      env: %ENVIRONMENT%
+      project: %GROUP_ID%
+    name: %APP_REPO_NAME%
+    namespace: pro-%ENVIRONMENT%-%GROUP_ID%
+  spec:
+    ports:
+      - name: 8080-tcp
+        port: 8080
+        protocol: TCP
+        targetPort: 8080
+    selector:
+      app: %APP_REPO_NAME%
+      deploymentconfig: %APP_REPO_NAME%
+    sessionAffinity: None
+    type: LoadBalancer
+  status:
+    loadBalancer: {}
+
+
+# - kind: Route
+#   apiVersion: v1
+#   metadata:
+#     annotations:
+#       haproxy.router.openshift.io/timeout: 60s
+
+#     labels:
+#       app: %APP_REPO_NAME%
+#       env: %ENVIRONMENT%
+#       project: %GROUP_ID%
+#     name: %APP_REPO_NAME%
+#     namespace: pro-%ENVIRONMENT%-%GROUP_ID%
+#   spec:
+#     host: %APP_REPO_NAME%-proportal.apps.%SUB_DOMAIN%.%DOMAIN%
+#     port:
+#       targetPort: 8080-tcp
+#     tls:
+#       termination: edge
+#     to:
+#       kind: Service
+#       name: %APP_REPO_NAME%
+#       weight: 100
+#     wildcardPolicy: None
